@@ -4,7 +4,7 @@
 
 ---
 
-## 📌 1. Descripción del Proyecto
+## 1. Descripción del Proyecto
 
 Este repositorio contiene una solución completa basada en una **Arquitectura Orientada a Eventos (Event-Driven Architecture - EDA)** aplicando el patrón **Publicador/Suscriptor (Pub/Sub)** sobre un broker de mensajería **RabbitMQ**.
 
@@ -89,7 +89,7 @@ Deberás ver los 5 contenedores con estado **Up**:
 
 ---
 
-## 🎬 4. Guía para la Demo en Vivo
+##  4. Guía para la Demo en Vivo
 
 ### Paso 1: Abrir la terminal de logs en tiempo real
 Para apreciar visualmente la concurrencia y el patrón Pub/Sub, abre una **segunda ventana de terminal** y ejecuta el siguiente comando para seguir los logs de los 3 microservicios consumidores a la vez:
@@ -173,7 +173,7 @@ RabbitMQ incluye una consola gráfica web que permite ilustrar con claridad a la
 
 ---
 
-## 🛑 6. Detener el Entorno
+## 6. Detener el Entorno
 
 Para apagar los contenedores y liberar los recursos del sistema:
 
