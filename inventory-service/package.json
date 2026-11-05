@@ -1,0 +1,12 @@
+{
+  "name": "inventory-service",
+  "version": "1.0.0",
+  "description": "Microservicio Suscriptor: Gestión de Inventario",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.4"
+  }
+}

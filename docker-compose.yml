@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # Message Broker: RabbitMQ con Management UI
+  # ==========================================
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq-broker
+    ports:
+      - "5672:5672"     # Puerto AMQP
+      - "15672:15672"   # Management Dashboard Web UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - eda-network
+
+  # ==========================================
+  # Microservicio Productor: Orders API
+  # ==========================================
+  orders-api:
+    build:
+      context: ./orders-api
+      dockerfile: Dockerfile
+    container_name: orders-api-producer
+    restart: on-failure
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      EXCHANGE_NAME: pedidos_exchange
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eda-network
+
+  # ==========================================
+  # Suscriptor 1: Inventory Service
+  # ==========================================
+  inventory-service:
+    build:
+      context: ./inventory-service
+      dockerfile: Dockerfile
+    container_name: inventory-service-worker
+    restart: on-failure
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      EXCHANGE_NAME: pedidos_exchange
+      QUEUE_NAME: inventario_queue
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eda-network
+
+  # ==========================================
+  # Suscriptor 2: Billing Service
+  # ==========================================
+  billing-service:
+    build:
+      context: ./billing-service
+      dockerfile: Dockerfile
+    container_name: billing-service-worker
+    restart: on-failure
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      EXCHANGE_NAME: pedidos_exchange
+      QUEUE_NAME: facturacion_queue
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eda-network
+
+  # ==========================================
+  # Suscriptor 3: Shipping Service
+  # ==========================================
+  shipping-service:
+    build:
+      context: ./shipping-service
+      dockerfile: Dockerfile
+    container_name: shipping-service-worker
+    restart: on-failure
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      EXCHANGE_NAME: pedidos_exchange
+      QUEUE_NAME: envios_queue
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - eda-network
+
+networks:
+  eda-network:
+    driver: bridge
