@@ -1,6 +1,6 @@
 # ==============================================================================
 # Script Interactivo de Demostracion en Vivo: EDA + Pub/Sub con RabbitMQ
-# Universidad Tecnologica Nacional (UTN) - Sistemas Distribuidos
+# Universidad Tecnologica Nacional (UTN) - Desarrollo de Software
 # ==============================================================================
 
 $ErrorActionPreference = "Stop"
@@ -33,8 +33,8 @@ function Escenario-1-PubSubConcurrente {
             direccion = "French 414, Resistencia, Chaco"
         }
         articulos = @(
-            @{ codigo = "NOTEBOOK-01"; nombre = "Notebook Desarrollo 16GB"; cantidad = 1; precio = 1200.00 },
-            @{ codigo = "MOUSE-02"; nombre = "Mouse Inalambrico"; cantidad = 1; precio = 25.50 }
+            @{ codigo = "NOTEBOOK-PRO"; nombre = "Notebook Desarrollo 16GB"; cantidad = 1; precio = 1200.00 },
+            @{ codigo = "MOUSE-INAL"; nombre = "Mouse Inalambrico"; cantidad = 1; precio = 25.50 }
         )
         total = 1225.50
     } | ConvertTo-Json -Depth 5
@@ -52,8 +52,13 @@ function Escenario-2-EnrutamientoSelectivoYEventoThin {
     Mostrar-Encabezado "ESCENARIO 2: Enrutamiento Selectivo por Topicos y Evento Ligero (Thin Event)"
     Write-Host "Se cancelara el pedido 'PED-UTN-101' (POST /pedidos/PED-UTN-101/cancelar)."
     Write-Host "El productor emite 'PedidoCancelado' en el topico 'pedido.cancelado' solo con el ID y motivo."
-    Write-Host "-> Inventario, Facturacion y Notificaciones (pedido.#) LO RECIBEN."
+    Write-Host "-> Inventario, Facturacion y Notificaciones (comodin #) LO RECIBEN."
     Write-Host "-> Servicio de Envios (suscrito solo a 'pedido.creado') NO LO RECIBE (filtrado en el broker).`n"
+
+    Write-Host "Reiniciando 'servicio-inventario' para que pierda su copia local del pedido." -ForegroundColor Yellow
+    Write-Host "Asi, al recibir el evento ligero (Thin), tendra que pedir los datos a la API (callback GET).`n" -ForegroundColor Yellow
+    docker compose restart servicio-inventario
+    Start-Sleep -Seconds 5
 
     $cuerpo = @{
         motivo = "El cliente decidio cambiar el medio de pago"
@@ -209,7 +214,7 @@ while ($true) {
             Escenario-4-IdempotenciaYVersionado
             Escenario-5-ColaMensajesMuertosDLQ
         }
-        "0" { break }
+        "0" { exit 0 }
         default { Write-Host "Opcion no valida." -ForegroundColor Red }
     }
 }

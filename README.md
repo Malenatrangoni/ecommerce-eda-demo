@@ -1,5 +1,5 @@
 # Arquitectura Orientada a Eventos (EDA) y Patrón Publicación/Suscripción (Pub/Sub) con RabbitMQ
-**Universidad Tecnológica Nacional (UTN) — Sistemas Distribuidos**  
+**Universidad Tecnológica Nacional (UTN) — Desarrollo de Software**  
 *Implementación práctica integrada de desacoplamiento espacial, temporal y de ejecución, enrutamiento por tópicos, eventos ECST vs. Thin, idempotencia y Cola de Mensajes Muertos (DLQ).*
 
 ---
@@ -16,10 +16,10 @@ A diferencia de una arquitectura acoplada por llamadas HTTP síncronas en cascad
 2. **Enrutamiento Selectivo por Tópicos y Comodines (`topic` exchange):**
    * `cola_envios` se suscribe únicamente a `pedido.creado`.
    * `cola_inventario` y `cola_facturacion` se suscriben a `pedido.creado` y `pedido.cancelado`.
-   * `cola_notificaciones` se suscribe mediante el comodín **`pedido.#`**, recibiendo absolutamente todos los eventos del ciclo de vida del pedido para alertas y auditoría.
+   * `cola_notificaciones` se suscribe mediante el comodín **`#`** (todos los tópicos), recibiendo tanto los eventos del pedido como los que publican los demás servicios (`StockReservado`, `FacturaEmitida`, `EnvioProgramado`, etc.), para alertas y auditoría.
 3. **Taxonomía de Eventos — *Event-Carried State Transfer (Fat / ECST)* vs. *Event Notification (Thin)*:**
    * **`PedidoCreado` (Evento Fat / ECST):** Transporta el estado completo del pedido (`cliente`, `articulos`, `total`). Permite que Inventario, Facturación y Envíos operen de forma 100% autónoma sin realizar llamadas de retorno al productor.
-   * **`PedidoCancelado` (Evento Thin / Notificación Ligera):** Transporta únicamente el identificador `idPedido` y el `motivo`. Si un consumidor no posee el estado previo en caché local, realiza un *callback* síncrono `GET /pedidos/:idPedido` hacia la API de origen.
+   * **`PedidoCancelado` (Evento Thin / Notificación Ligera):** Transporta únicamente el identificador `idPedido` y el `motivo`. Si un consumidor no posee el estado previo en caché local, realiza un *callback* síncrono `GET /pedidos/:idPedido` hacia la API de origen. El escenario 2 de `demo.ps1` reinicia `servicio-inventario` antes de cancelar para que este callback se observe (el botón de cancelación de la interfaz web no lo hace).
 4. **Desacople Temporal y Confirmación Manual (`Manual ACK`):**
    * Las colas son durables y los mensajes persistentes. Si un consumidor (ej. `servicio-facturacion`) se detiene, el productor sigue operando con normalidad y RabbitMQ retiene los mensajes hasta que el servicio vuelve a estar en línea.
 5. **Garantía *At-Least-Once*, Idempotencia y Control de Versiones:**
@@ -51,7 +51,7 @@ A diferencia de una arquitectura acoplada por llamadas HTTP síncronas en cascad
                            +---+---------+---------+---------+--+
                                |         |         |         |
        +-----------------------+         |         |         +-----------------------+
-       | pedido.creado                   |         | pedido.creado                   | pedido.#
+       | pedido.creado                   |         | pedido.creado                   | # (todo)
        | pedido.cancelado                |         | (Selectivo)                     | (Comodín Global)
        v                                 v         v                                 v
 [cola_inventario]              [cola_facturacion] [cola_envios]            [cola_notificaciones]
@@ -103,13 +103,13 @@ Una vez que los contenedores están corriendo (`docker compose up --build -d`), 
 👉 **[http://localhost:3000](http://localhost:3000)**
 
 En la interfaz web (100% en español) encontrarás **3 secciones**:
-1. **1. Simulador de Eventos:** Panel con 4 botones interactivos para disparar en 1 clic cada escenario y ver en tiempo real cómo reaccionan los 4 microservicios y qué nuevos eventos coreografiados emiten:
+1. **Simulador de Eventos:** Panel con 4 botones interactivos para disparar en 1 clic cada escenario y ver en tiempo real cómo reaccionan los 4 microservicios y qué nuevos eventos coreografiados emiten:
    * **1. Crear Pedido de Compra (`Evento Fat / ECST`):** Publica `PedidoCreado` en `pedido.creado` y muestra a los 4 servicios procesando en paralelo y emitiendo `StockReservado`, `FacturaEmitida` y `EnvioProgramado`.
    * **2. Cancelar Pedido (`Evento Thin + Filtro por Tópico`):** Publica `PedidoCancelado` en `pedido.cancelado`. Muestra cómo Inventario, Facturación y Notificaciones actúan, mientras que **Envíos lo ignora** (filtrado en RabbitMQ).
    * **3. Simular Reintento Duplicado (`Idempotencia`):** Envía 2 veces seguidas el mismo `idEvento` y demuestra cómo los consumidores bloquean el cobro o descuento duplicado.
    * **4. Enviar Pedido Inválido (`Fallo → DLQ`):** Envía un pedido con monto negativo (`-$50`), los consumidores responden `NACK` y RabbitMQ lo aísla en `cola_mensajes_muertos`.
-2. **2. Colas y Tópicos en RabbitMQ:** Tabla en tiempo real que consulta al broker y muestra las 5 colas, sus tópicos suscritos (*bindings*), consumidores activos, mensajes en espera y mensajes confirmados (`ACK`).
-3. **3. Sobres de Eventos (JSON):** Inspector para ver el JSON completo (`EventEnvelope`) de cada evento publicado en la cadena coreografiada.
+2. **Colas y Tópicos en RabbitMQ:** Tabla en tiempo real que consulta al broker y muestra las 5 colas, sus tópicos suscritos (*bindings*), consumidores activos, mensajes en espera y mensajes confirmados (`ACK`).
+3. **Sobres de Eventos (JSON):** Inspector para ver el JSON completo (`EventEnvelope`) de cada evento publicado en la cadena coreografiada.
 
 ---
 

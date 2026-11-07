@@ -56,8 +56,16 @@ async function conectarRabbitMQ() {
               if (!ped.eventosDominio.includes(ev.tipoEvento)) {
                 ped.eventosDominio.push(ev.tipoEvento);
               }
-              if (ev.tipoEvento === 'EnvioProgramado') ped.estado = 'COMPLETADO_Y_DESPACHADO';
-              if (ev.tipoEvento === 'StockRestituido') ped.estado = 'CANCELADO_Y_REPUESTO';
+              // El pedido solo se considera completo cuando los tres servicios confirmaron su parte.
+              // Mientras tanto queda EN_PROCESO y 'pendientes' muestra qué falta (consistencia eventual).
+              const requeridos = ['StockReservado', 'FacturaEmitida', 'EnvioProgramado'];
+              if (ev.tipoEvento === 'StockRestituido') {
+                ped.estado = 'CANCELADO_Y_REPUESTO';
+              } else if (!String(ped.estado).startsWith('CANCELADO')) {
+                const pendientes = requeridos.filter((t) => !ped.eventosDominio.includes(t));
+                ped.pendientes = pendientes;
+                ped.estado = pendientes.length === 0 ? 'COMPLETADO' : 'EN_PROCESO';
+              }
             }
           } catch (_) {}
         },

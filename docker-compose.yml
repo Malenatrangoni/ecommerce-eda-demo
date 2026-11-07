@@ -109,7 +109,7 @@ services:
       - red-eda
 
   # ==========================================
-  # Suscriptor 4: Servicio de Notificaciones y Auditoría (comodín pedido.#)
+  # Suscriptor 4: Servicio de Notificaciones y Auditoría (comodín #: todos los tópicos)
   # ==========================================
   servicio-notificaciones:
     build:
