@@ -102,7 +102,7 @@ Una vez que los contenedores están corriendo (`docker compose up --build -d`), 
 
 👉 **[http://localhost:3000](http://localhost:3000)**
 
-En la interfaz web (100% en español) encontrarás **3 secciones**:
+En la interfaz web (100% en español) encontrarás **4 secciones**:
 1. **Simulador de Eventos:** Panel con 4 botones interactivos para disparar en 1 clic cada escenario y ver en tiempo real cómo reaccionan los 4 microservicios y qué nuevos eventos coreografiados emiten:
    * **1. Crear Pedido de Compra (`Evento Fat / ECST`):** Publica `PedidoCreado` en `pedido.creado` y muestra a los 4 servicios procesando en paralelo y emitiendo `StockReservado`, `FacturaEmitida` y `EnvioProgramado`.
    * **2. Cancelar Pedido (`Evento Thin + Filtro por Tópico`):** Publica `PedidoCancelado` en `pedido.cancelado`. Muestra cómo Inventario, Facturación y Notificaciones actúan, mientras que **Envíos lo ignora** (filtrado en RabbitMQ).
@@ -110,6 +110,7 @@ En la interfaz web (100% en español) encontrarás **3 secciones**:
    * **4. Enviar Pedido Inválido (`Fallo → DLQ`):** Envía un pedido con monto negativo (`-$50`), los consumidores responden `NACK` y RabbitMQ lo aísla en `cola_mensajes_muertos`.
 2. **Colas y Tópicos en RabbitMQ:** Tabla en tiempo real que consulta al broker y muestra las 5 colas, sus tópicos suscritos (*bindings*), consumidores activos, mensajes en espera y mensajes confirmados (`ACK`).
 3. **Sobres de Eventos (JSON):** Inspector para ver el JSON completo (`EventEnvelope`) de cada evento publicado en la cadena coreografiada.
+4. **Pedidos y Consistencia Eventual:** Tabla que muestra la proyección local del productor (`CREADO`, `EN_PROCESO`, `COMPLETADO`, `CANCELADO`) reconstruida a partir de los eventos de dominio, con los eventos recibidos y los que aún faltan para completar el pedido.
 
 ---
 
@@ -124,7 +125,7 @@ Si además deseas ejecutar las pruebas desde la terminal (incluyendo la detenci�
 
 ---
 
-## 📊 5. Panel de Administración de RabbitMQ
+## 📊 6. Panel de Administración de RabbitMQ
 
 * **URL:** [http://localhost:15672](http://localhost:15672)
 * **Usuario:** `guest` | **Contraseña:** `guest`
@@ -135,7 +136,7 @@ En el panel web se puede inspeccionar en vivo:
 
 ---
 
-## 6. Detener el Entorno
+## 7. Detener el Entorno
 
 ```bash
 docker compose down -v
