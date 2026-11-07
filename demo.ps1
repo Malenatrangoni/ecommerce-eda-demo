@@ -19,6 +19,24 @@ function Mostrar-LogsRecientes($Desde, $Servicios = @("servicio-inventario", "se
     docker compose logs --since $Desde @Servicios
 }
 
+function New-PedidoDemostracion($idPedido) {
+    $cuerpo = @{
+        idPedido = $idPedido
+        cliente = @{
+            nombre = "Estudiante UTN"
+            correo = "alumno@utn.edu.ar"
+            direccion = "French 414, Resistencia, Chaco"
+        }
+        articulos = @(
+            @{ codigo = "NOTEBOOK-PRO"; nombre = "Notebook Desarrollo 16GB"; cantidad = 1; precio = 1200.00 },
+            @{ codigo = "MOUSE-INAL"; nombre = "Mouse Inalambrico"; cantidad = 1; precio = 25.50 }
+        )
+        total = 1225.50
+    } | ConvertTo-Json -Depth 5
+
+    Invoke-RestMethod -Uri "$UrlBase/pedidos" -Method Post -ContentType "application/json; charset=utf-8" -Body ([System.Text.Encoding]::UTF8.GetBytes($cuerpo)) | Out-Null
+}
+
 function Escenario-1-PubSubConcurrente {
     Mostrar-Encabezado "ESCENARIO 1: Publicacion/Suscripcion, Coreografia y Evento Fat (ECST)"
     Write-Host "Se enviara un pedido de compra (POST /pedidos). El productor publicara 'PedidoCreado'"
@@ -50,7 +68,30 @@ function Escenario-1-PubSubConcurrente {
 
 function Escenario-2-EnrutamientoSelectivoYEventoThin {
     Mostrar-Encabezado "ESCENARIO 2: Enrutamiento Selectivo por Topicos y Evento Ligero (Thin Event)"
-    Write-Host "Se cancelara el pedido 'PED-UTN-101' (POST /pedidos/PED-UTN-101/cancelar)."
+
+    # El escenario debe funcionar aunque no se haya ejecutado el Escenario 1 antes.
+    $idPedido = "PED-UTN-101"
+    $pedidoExistente = $null
+    try {
+        $pedidoExistente = Invoke-RestMethod -Uri "$UrlBase/pedidos/$idPedido" -Method Get
+    } catch {
+        $pedidoExistente = $null
+    }
+
+    if (-not $pedidoExistente) {
+        Write-Host "El pedido '$idPedido' no existe (no se ejecuto el Escenario 1)." -ForegroundColor Yellow
+        Write-Host "Creandolo antes de cancelar para que este escenario sea autonomo...`n" -ForegroundColor Yellow
+        New-PedidoDemostracion $idPedido
+        Start-Sleep -Seconds 2
+    } elseif ($pedidoExistente.estado -like "CANCELADO*") {
+        $idPedido = "PED-UTN-101-BIS-$(Get-Random -Minimum 100 -Maximum 999)"
+        Write-Host "El pedido base ya estaba cancelado de una corrida anterior." -ForegroundColor Yellow
+        Write-Host "Se usara '$idPedido' para repetir la prueba de forma limpia...`n" -ForegroundColor Yellow
+        New-PedidoDemostracion $idPedido
+        Start-Sleep -Seconds 2
+    }
+
+    Write-Host "Se cancelara el pedido '$idPedido' (POST /pedidos/$idPedido/cancelar)."
     Write-Host "El productor emite 'PedidoCancelado' en el topico 'pedido.cancelado' solo con el ID y motivo."
     Write-Host "-> Inventario, Facturacion y Notificaciones (comodin #) LO RECIBEN."
     Write-Host "-> Servicio de Envios (suscrito solo a 'pedido.creado') NO LO RECIBE (filtrado en el broker).`n"
@@ -65,7 +106,7 @@ function Escenario-2-EnrutamientoSelectivoYEventoThin {
     } | ConvertTo-Json
 
     $inicio = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-    $respuesta = Invoke-RestMethod -Uri "$UrlBase/pedidos/PED-UTN-101/cancelar" -Method Post -ContentType "application/json; charset=utf-8" -Body ([System.Text.Encoding]::UTF8.GetBytes($cuerpo))
+    $respuesta = Invoke-RestMethod -Uri "$UrlBase/pedidos/$idPedido/cancelar" -Method Post -ContentType "application/json; charset=utf-8" -Body ([System.Text.Encoding]::UTF8.GetBytes($cuerpo))
     Write-Host "[OK] Respuesta HTTP inmediata del Productor:" -ForegroundColor Green
     $respuesta | ConvertTo-Json -Depth 5 | Write-Host
 
