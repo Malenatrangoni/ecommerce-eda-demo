@@ -11,6 +11,7 @@ const URL_RABBITMQ = process.env.URL_RABBITMQ || 'amqp://guest:guest@localhost:5
 const URL_ADMIN_RABBITMQ = process.env.URL_ADMIN_RABBITMQ || 'http://rabbitmq:15672';
 const NOMBRE_INTERCAMBIADOR = process.env.NOMBRE_INTERCAMBIADOR || 'intercambiador_pedidos';
 const TIPO_INTERCAMBIADOR = 'topic';
+const INTERCAMBIADOR_DLQ = process.env.INTERCAMBIADOR_DLQ || 'intercambiador_dlq';
 
 let canal = null;
 
@@ -108,7 +109,9 @@ function publicarEvento({ topico, tipoEvento, patronDatos, idPedido, version, id
     patronDatos,
     fechaHora: new Date().toISOString(),
     idPedido,
-    idCorrelacion: idCorrelacion || `CORR-${idPedido}-${Date.now()}`,
+    // Correlación estable por pedido: todos los eventos de su ciclo de vida
+    // (creación, reserva, factura, envío, cancelación y reposición) comparten el mismo hilo de trazabilidad.
+    idCorrelacion: idCorrelacion || `CORR-${idPedido}`,
     version,
     datos
   };
@@ -166,15 +169,42 @@ aplicacion.post('/actividad/limpiar', (req, res) => {
 aplicacion.get('/estado-sistema', async (req, res) => {
   let colasRabbit = [];
   let intercambiadoresRabbit = [];
+  let topicosDesdeBroker = false;
 
   try {
     const cabeceras = {
       Authorization: 'Basic ' + Buffer.from('guest:guest').toString('base64')
     };
-    const [respColas, respExchanges] = await Promise.all([
+    const [respColas, respExchanges, respBindings] = await Promise.all([
       fetch(`${URL_ADMIN_RABBITMQ}/api/queues/%2F`, { headers: cabeceras }),
-      fetch(`${URL_ADMIN_RABBITMQ}/api/exchanges/%2F`, { headers: cabeceras })
+      fetch(`${URL_ADMIN_RABBITMQ}/api/exchanges/%2F`, { headers: cabeceras }),
+      fetch(`${URL_ADMIN_RABBITMQ}/api/bindings/%2F`, { headers: cabeceras })
     ]);
+
+    // Los bindings se leen del broker para que la UI no dependa de una copia hardcodeada
+    // que podría quedar desactualizada respecto de la topología real.
+    const bindingsPorCola = new Map();
+    if (respBindings.ok) {
+      const datosBindings = await respBindings.json();
+      for (const binding of datosBindings) {
+        if (binding.destination_type !== 'queue') continue;
+
+        let etiqueta = null;
+        if (binding.source === NOMBRE_INTERCAMBIADOR) {
+          etiqueta = binding.routing_key;
+        } else if (binding.source === INTERCAMBIADOR_DLQ) {
+          etiqueta = `${binding.source} -> ${binding.routing_key || '(fanout)'}`;
+        }
+        if (etiqueta === null) continue;
+
+        if (!bindingsPorCola.has(binding.destination)) {
+          bindingsPorCola.set(binding.destination, []);
+        }
+        const claves = bindingsPorCola.get(binding.destination);
+        if (!claves.includes(etiqueta)) claves.push(etiqueta);
+      }
+      topicosDesdeBroker = true;
+    }
 
     if (respColas.ok) {
       const datosColas = await respColas.json();
@@ -182,48 +212,48 @@ aplicacion.get('/estado-sistema', async (req, res) => {
         cola_inventario: {
           nombreMostrar: 'Cola de Inventario',
           servicio: 'servicio-inventario',
-          topicos: ['pedido.creado', 'pedido.cancelado'],
           rol: 'Reserva stock (ECST) y repone por cancelación (Thin)'
         },
         cola_facturacion: {
           nombreMostrar: 'Cola de Facturación',
           servicio: 'servicio-facturacion',
-          topicos: ['pedido.creado', 'pedido.cancelado'],
           rol: 'Emite Factura IVA 21% y Notas de Crédito'
         },
         cola_envios: {
           nombreMostrar: 'Cola de Envíos (Selectiva)',
           servicio: 'servicio-envios',
-          topicos: ['pedido.creado'],
           rol: 'Genera guía de despacho (ignora cancelaciones)'
         },
         cola_notificaciones: {
           nombreMostrar: 'Cola de Notificaciones (Comodín Global)',
           servicio: 'servicio-notificaciones',
-          topicos: ['# (todos los dominios)'],
           rol: 'Correlaciona toda la cadena coreografiada de eventos EDA'
         },
         cola_mensajes_muertos: {
           nombreMostrar: 'Cola de Mensajes Muertos (DLQ)',
           servicio: 'Aislamiento de Fallos (DLQ)',
-          topicos: ['Mensajes rechazados (NACK)'],
           rol: 'Almacena mensajes fallidos sin frenar el sistema',
           esDLQ: true
         }
       };
 
       colasRabbit = datosColas.map((c) => {
-        const meta = metadatosColas[c.name] || {
-          nombreMostrar: c.name,
-          servicio: 'Consumidor',
-          topicos: [],
-          rol: 'Cola de mensajería'
-        };
+        const meta = metadatosColas[c.name] || (c.name.startsWith('amq.')
+          ? {
+              nombreMostrar: 'Cola temporal del Monitor de la UI',
+              servicio: 'api-pedidos (observabilidad)',
+              rol: 'Suscripción exclusiva # del panel; no participa de la lógica de negocio'
+            }
+          : {
+              nombreMostrar: c.name,
+              servicio: 'Consumidor',
+              rol: 'Cola de mensajería'
+            });
         return {
           nombreTecnico: c.name,
           nombreMostrar: meta.nombreMostrar,
           servicio: meta.servicio,
-          topicos: meta.topicos,
+          topicos: bindingsPorCola.get(c.name) || [],
           rol: meta.rol,
           esDLQ: Boolean(meta.esDLQ),
           durable: c.durable,
@@ -253,6 +283,7 @@ aplicacion.get('/estado-sistema', async (req, res) => {
 
   res.json({
     conectadoARabbitMQ: canal !== null,
+    topicosDesdeBroker,
     intercambiadorPrincipal: NOMBRE_INTERCAMBIADOR,
     tipoIntercambiador: TIPO_INTERCAMBIADOR,
     intercambiadores: intercambiadoresRabbit,

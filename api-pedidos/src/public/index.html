@@ -58,6 +58,7 @@
       color: var(--text-primary);
       min-height: 100vh;
       -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
     }
 
     code, .mono {
@@ -65,7 +66,7 @@
     }
 
     /* ==========================================
-       BARRA DE NAVEGACIÓN SUPERIOR (1 SOLA LÍNEA)
+       BARRA DE NAVEGACIÓN SUPERIOR RESPONSIVE
        ========================================== */
     .navbar {
       background: rgba(18, 20, 29, 0.82);
@@ -79,12 +80,14 @@
     .navbar-inner {
       max-width: 1280px;
       margin: 0 auto;
-      padding: 0 24px;
-      height: 62px;
+      padding: 9px 24px;
+      min-height: 62px;
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
+      row-gap: 8px;
     }
 
     .brand {
@@ -92,6 +95,7 @@
       align-items: center;
       gap: 11px;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .brand-icon {
@@ -130,15 +134,22 @@
       margin-left: 6px;
     }
 
-    /* Selector central de las 3 secciones */
+    /* Selector de las 4 secciones */
     .nav-tabs {
+      order: 3;
+      width: 100%;
       display: flex;
       align-items: center;
+      justify-content: flex-start;
       gap: 4px;
       background: #0c0e14;
       border: 1px solid var(--border);
       padding: 4px;
       border-radius: 10px;
+      min-width: 0;
+      max-width: 100%;
+      overflow-x: auto;
+      scrollbar-width: thin;
     }
 
     .nav-tab {
@@ -156,6 +167,7 @@
       align-items: center;
       gap: 7px;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .nav-tab:hover {
@@ -188,6 +200,7 @@
       align-items: center;
       gap: 10px;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
     .broker-pill {
@@ -209,6 +222,17 @@
       border-radius: 50%;
       background: var(--emerald);
       box-shadow: 0 0 8px var(--emerald);
+    }
+
+    .broker-pill.offline {
+      color: #fb7185;
+      background: rgba(244, 63, 94, 0.1);
+      border-color: rgba(244, 63, 94, 0.25);
+    }
+
+    .broker-pill.offline .status-dot {
+      background: var(--rose);
+      box-shadow: 0 0 8px var(--rose);
     }
 
     .btn-ghost {
@@ -572,7 +596,7 @@
       background: var(--bg-surface);
       border: 1px solid var(--border);
       border-radius: 14px;
-      overflow: hidden;
+      overflow-x: auto;
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
     }
 
@@ -649,11 +673,43 @@
       max-height: 440px;
       overflow: auto;
     }
+    /* ==========================================
+       RESPONSIVE: EVITAR DESBORDE HORIZONTAL
+       ========================================== */
+    @media (max-width: 960px) {
+      .events-grid { grid-template-columns: 1fr; }
+      .table-wrap { overflow-x: auto; }
+      .table-wrap table { min-width: 720px; }
+      #vista-pedidos table { min-width: 840px; }
+    }
+
+    @media (max-width: 900px) {
+      .brand-tag { display: none; }
+    }
+
+    @media (max-width: 720px) {
+      .navbar { position: static; }
+      .navbar-inner { padding: 8px 14px; }
+      .container { margin-top: 14px; padding: 0 14px 20px; }
+      .section-head { flex-direction: column; align-items: flex-start; gap: 6px; }
+      .panel-card { padding: 14px; }
+      .srv-body-text { padding-left: 0; }
+      .event-list { max-height: 260px; }
+      .json-pre { max-height: 320px; }
+      .scen-btn p,
+      .section-head p,
+      .explain-box p { overflow-wrap: anywhere; }
+    }
+
+    @media (max-width: 560px) {
+      .brand-title { display: none; }
+      .nav-right { margin-left: auto; }
+    }
   </style>
 </head>
 <body>
 
-  <!-- BARRA DE NAVEGACIÓN EN UNA SOLA LÍNEA -->
+  <!-- BARRA DE NAVEGACIÓN RESPONSIVE (MARCA + PESTAÑAS) -->
   <nav class="navbar">
     <div class="navbar-inner">
       <div class="brand">
@@ -676,12 +732,15 @@
         <button class="nav-tab" id="tab-json" onclick="mostrarSeccion('json')">
           <span class="tab-num">3</span> Sobres de Eventos (JSON)
         </button>
+        <button class="nav-tab" id="tab-pedidos" onclick="mostrarSeccion('pedidos')">
+          <span class="tab-num">4</span> Pedidos (Consistencia)
+        </button>
       </div>
 
       <div class="nav-right">
-        <span class="broker-pill">
+        <span class="broker-pill" id="estadoBroker">
           <span class="status-dot"></span>
-          RabbitMQ Conectado
+          <span id="textoEstadoBroker">RabbitMQ Conectado</span>
         </span>
         <button class="btn-ghost" onclick="limpiarBitacora()">Reiniciar</button>
       </div>
@@ -774,7 +833,8 @@
       <div class="section-head">
         <div>
           <h2>2. Estado de las Colas e Intercambiador en RabbitMQ</h2>
-          <p>Métricas consultadas en tiempo real al broker RabbitMQ sobre el intercambiador <code>intercambiador_pedidos</code> (tipo <code>topic</code>).</p>
+          <p>Métricas y <b>bindings</b> consultados en vivo al broker RabbitMQ sobre el intercambiador <code>intercambiador_pedidos</code> (tipo <code>topic</code>).</p>
+          <span class="badge b-red" id="avisoBindings" style="display:none">Bindings no disponibles en el broker</span>
         </div>
         <a class="btn-ghost" href="http://localhost:15672" target="_blank">Abrir consola interna RabbitMQ (:15672) ↗</a>
       </div>
@@ -824,6 +884,40 @@
       </div>
     </section>
 
+    <!-- =================================================================
+         SECCIÓN 4: PROYECCIÓN DE PEDIDOS Y CONSISTENCIA EVENTUAL
+         ================================================================= -->
+    <section class="section-view" id="vista-pedidos">
+      <div class="section-head">
+        <div>
+          <h2>4. Proyección de Pedidos y Consistencia Eventual</h2>
+          <p>El productor no consulta a los demás servicios: reconstruye el estado del pedido con los eventos de dominio que llegan por RabbitMQ.</p>
+        </div>
+      </div>
+
+      <div class="explain-box">
+        <h3>Estado derivado de eventos (sin orquestador central)</h3>
+        <p>Un pedido queda <b>EN_PROCESO</b> hasta que se reciben <code>StockReservado</code>, <code>FacturaEmitida</code> y <code>EnvioProgramado</code>; recién ahí pasa a <b>COMPLETADO</b>. Si se cancela, pasa a <b>CANCELADO</b> y luego a <b>CANCELADO_Y_REPUESTO</b> cuando llega <code>StockRestituido</code>.</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Pedido</th>
+              <th>Estado</th>
+              <th>Versión</th>
+              <th>Cliente</th>
+              <th>Total</th>
+              <th>Eventos de dominio recibidos</th>
+              <th>Pendientes para completar</th>
+            </tr>
+          </thead>
+          <tbody id="tablaPedidosBody"></tbody>
+        </table>
+      </div>
+    </section>
+
   </main>
 
   <script>
@@ -847,10 +941,28 @@
     };
 
     function mostrarSeccion(nombre) {
-      ['simulador', 'colas', 'json'].forEach((sec) => {
+      ['simulador', 'colas', 'json', 'pedidos'].forEach((sec) => {
         document.getElementById(`vista-${sec}`).classList.toggle('active', sec === nombre);
         document.getElementById(`tab-${sec}`).classList.toggle('active', sec === nombre);
       });
+    }
+
+    function escaparHtml(valor) {
+      return String(valor).replace(/[&<>"']/g, (caracter) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[caracter]));
+    }
+
+    function marcarEstadoBroker(conectado, texto) {
+      const pill = document.getElementById('estadoBroker');
+      const etiqueta = document.getElementById('textoEstadoBroker');
+      if (!pill || !etiqueta) return;
+      pill.classList.toggle('offline', !conectado);
+      etiqueta.textContent = texto || (conectado ? 'RabbitMQ Conectado' : 'RabbitMQ Desconectado');
     }
 
     function marcarBotonActivo(idBoton, clase) {
@@ -1013,7 +1125,17 @@
       const colasMap = new Map(colas.map((c) => [c.nombreTecnico, c]));
       const bitacora = datos.bitacoraActividad || [];
       const eventos = datos.eventosPublicados || [];
+      const pedidos = datos.pedidos || [];
       const ultimoEvento = eventos[0] || null;
+
+      // El indicador del broker refleja el estado real informado por la API,
+      // en lugar de mostrarse siempre como "conectado".
+      marcarEstadoBroker(Boolean(datos.conectadoARabbitMQ));
+
+      const avisoBindings = document.getElementById('avisoBindings');
+      if (avisoBindings) {
+        avisoBindings.style.display = datos.topicosDesdeBroker === false ? 'inline-block' : 'none';
+      }
 
       if (ultimoEvento) {
         document.getElementById('etiquetaUltimoTopico').textContent = `Último tópico: ${ultimoEvento.topico}`;
@@ -1079,7 +1201,7 @@
                 ${badgeEventoEmitido}
               </div>
               <div class="srv-right-meta">
-                <span class="topic-chip">Escucha: ${(infoCola.topicos || []).join(', ')}</span>
+                <span class="topic-chip">Escucha: ${(infoCola.topicos && infoCola.topicos.length ? infoCola.topicos.join(', ') : '—')}</span>
                 <span class="srv-status">${etiquetaDerecha}</span>
               </div>
             </div>
@@ -1106,7 +1228,7 @@
               <code style="font-size:0.75rem;color:var(--text-secondary)">${c.nombreTecnico}</code>
             </td>
             <td style="color:var(--text-secondary)">${c.servicio}</td>
-            <td><span class="topic-chip">${(c.topicos || []).join(' , ')}</span></td>
+            <td><span class="topic-chip">${(c.topicos && c.topicos.length ? c.topicos.join(' , ') : '—')}</span></td>
             <td>${estadoHtml}</td>
             <td><b class="mono" style="font-size:0.95rem;color:${c.mensajesListos > 0 ? '#fb7185' : 'var(--text-primary)'}">${c.mensajesListos}</b></td>
             <td><b class="mono" style="font-size:0.95rem;color:#818cf8">${c.totalConfirmadosAck}</b></td>
@@ -1139,6 +1261,60 @@
         }).join('');
         visorJson.textContent = JSON.stringify(eventos[indiceEventoSeleccionado], null, 2);
       }
+
+      // 4. Renderizar la proyección de pedidos y su consistencia eventual
+      const tbodyPedidos = document.getElementById('tablaPedidosBody');
+      if (tbodyPedidos) {
+        if (pedidos.length === 0) {
+          tbodyPedidos.innerHTML = `<tr><td colspan="7" style="color:var(--text-secondary)">Todavía no hay pedidos registrados. Dispará el escenario 1 del simulador.</td></tr>`;
+        } else {
+          tbodyPedidos.innerHTML = pedidos.map((p) => {
+            const estado = String(p.estado || 'S/D');
+            const esCancelado = estado.startsWith('CANCELADO');
+
+            let claseEstado = 'b-purple';
+            if (estado === 'COMPLETADO') claseEstado = 'b-green';
+            else if (estado === 'EN_PROCESO' || estado === 'CANCELADO_Y_REPUESTO') claseEstado = 'b-amber';
+            else if (esCancelado) claseEstado = 'b-red';
+
+            const cliente = p.cliente && typeof p.cliente === 'object'
+              ? (p.cliente.nombre || p.cliente.name || 'S/D')
+              : (p.cliente || 'S/D');
+            const total = Number.isFinite(Number(p.total))
+              ? `$${Number(p.total).toLocaleString('es-AR')}`
+              : '—';
+            const eventosDominio = p.eventosDominio || [];
+            const pendientes = p.pendientes || [];
+
+            const eventosHtml = eventosDominio.length
+              ? eventosDominio.map((e) => `<span class="topic-chip">${escaparHtml(e)}</span>`).join(' ')
+              : '<span style="color:var(--text-muted)">Ninguno todavía</span>';
+
+            let pendientesHtml;
+            if (estado === 'COMPLETADO') {
+              pendientesHtml = '<span style="color:#34d399">Nada: pedido completo</span>';
+            } else if (esCancelado) {
+              pendientesHtml = '<span style="color:#fb7185">No aplica: pedido cancelado</span>';
+            } else if (pendientes.length) {
+              pendientesHtml = pendientes.map((e) => `<span class="topic-chip">${escaparHtml(e)}</span>`).join(' ');
+            } else {
+              pendientesHtml = '<span style="color:var(--text-muted)">—</span>';
+            }
+
+            return `
+              <tr>
+                <td><strong class="mono">${escaparHtml(p.idPedido || 'S/D')}</strong></td>
+                <td><span class="badge ${claseEstado}">${escaparHtml(estado)}</span></td>
+                <td class="mono">v${escaparHtml(p.version || 1)}</td>
+                <td style="color:var(--text-secondary)">${escaparHtml(cliente)}</td>
+                <td class="mono">${total}</td>
+                <td>${eventosHtml}</td>
+                <td>${pendientesHtml}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      }
     }
 
     function seleccionarEvento(idx) {
@@ -1149,10 +1325,15 @@
     async function actualizarEstado() {
       try {
         const resp = await fetch('/estado-sistema');
-        if (!resp.ok) return;
+        if (!resp.ok) {
+          marcarEstadoBroker(false, 'Estado no disponible');
+          return;
+        }
         const datos = await resp.json();
         renderizarTodo(datos);
-      } catch (_) {}
+      } catch (_) {
+        marcarEstadoBroker(false, 'Panel sin conexión');
+      }
     }
 
     actualizarEstado();
