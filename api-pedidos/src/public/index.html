@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Demo EDA y Patrón Pub/Sub — UTN</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #090a0f;
+      --bg-surface: #12141d;
+      --bg-elevated: #181b26;
+      --bg-hover: #1f2330;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --text-primary: #f4f4f6;
+      --text-secondary: #9499ad;
+      --text-muted: #63687a;
+
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.16);
+
+      --emerald: #10b981;
+      --emerald-bg: rgba(16, 185, 129, 0.08);
+      --emerald-border: rgba(16, 185, 129, 0.28);
+
+      --amber: #f59e0b;
+      --amber-bg: rgba(245, 158, 11, 0.08);
+      --amber-border: rgba(245, 158, 11, 0.28);
+
+      --violet: #a855f7;
+      --violet-bg: rgba(168, 85, 247, 0.08);
+      --violet-border: rgba(168, 85, 247, 0.28);
+
+      --rose: #f43f5e;
+      --rose-bg: rgba(244, 63, 94, 0.08);
+      --rose-border: rgba(244, 63, 94, 0.28);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2e3d; border-radius: 999px; }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg-base);
+      background-image:
+        radial-gradient(at 15% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 45%),
+        radial-gradient(at 85% 0%, rgba(16, 185, 129, 0.07) 0px, transparent 40%);
+      color: var(--text-primary);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    code, .mono {
+      font-family: 'JetBrains Mono', Consolas, monospace;
+    }
+
+    /* ==========================================
+       BARRA DE NAVEGACIÓN SUPERIOR (1 SOLA LÍNEA)
+       ========================================== */
+    .navbar {
+      background: rgba(18, 20, 29, 0.82);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .navbar-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      white-space: nowrap;
+    }
+
+    .brand-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+      flex-shrink: 0;
+    }
+
+    .brand-icon svg {
+      width: 18px;
+      height: 18px;
+      color: #fff;
+    }
+
+    .brand-title {
+      font-size: 0.96rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+    }
+
+    .brand-tag {
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin-left: 6px;
+    }
+
+    /* Selector central de las 3 secciones */
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: #0c0e14;
+      border: 1px solid var(--border);
+      padding: 4px;
+      border-radius: 10px;
+    }
+
+    .nav-tab {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: 0.81rem;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.16s ease;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+
+    .nav-tab:hover {
+      color: var(--text-primary);
+    }
+
+    .nav-tab.active {
+      background: var(--bg-elevated);
+      color: #fff;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-strong);
+    }
+
+    .tab-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text-secondary);
+    }
+
+    .nav-tab.active .tab-num {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      white-space: nowrap;
+    }
+
+    .broker-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: #34d399;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      padding: 5px 11px;
+      border-radius: 999px;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+
+    .btn-ghost {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-family: inherit;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s;
+    }
+
+    .btn-ghost:hover {
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-elevated);
+    }
+
+    /* ==========================================
+       CONTENEDOR PRINCIPAL COMPACTO (SIN SCROLL)
+       ========================================== */
+    .container {
+      max-width: 1280px;
+      margin: 18px auto 0;
+      padding: 0 24px 24px;
+    }
+
+    .section-view {
+      display: none;
+      animation: fade 0.18s ease-out;
+    }
+
+    .section-view.active {
+      display: block;
+    }
+
+    @keyframes fade {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 14px;
+      gap: 16px;
+    }
+
+    .section-head h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .section-head p {
+      color: var(--text-secondary);
+      font-size: 0.84rem;
+    }
+
+    /* ==========================================
+       SECCIÓN 1: SIMULADOR (DISTRIBUCIÓN 2 COLUMNAS)
+       ========================================== */
+    .simulator-layout {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    @media (max-width: 960px) {
+      .simulator-layout { grid-template-columns: 1fr; }
+    }
+
+    .panel-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-title {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-secondary);
+    }
+
+    .panel-meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.74rem;
+      color: var(--accent);
+      background: var(--accent-glow);
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    /* Columna izquierda: 4 tarjetas de escenarios */
+    .scenario-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .scen-btn {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 11px 14px;
+      text-align: left;
+      color: var(--text-primary);
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.16s ease;
+      position: relative;
+    }
+
+    .scen-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+
+    .scen-btn.selected-green {
+      background: var(--emerald-bg);
+      border-color: var(--emerald-border);
+      box-shadow: inset 3px 0 0 var(--emerald);
+    }
+
+    .scen-btn.selected-amber {
+      background: var(--amber-bg);
+      border-color: var(--amber-border);
+      box-shadow: inset 3px 0 0 var(--amber);
+    }
+
+    .scen-btn.selected-purple {
+      background: var(--violet-bg);
+      border-color: var(--violet-border);
+      box-shadow: inset 3px 0 0 var(--violet);
+    }
+
+    .scen-btn.selected-red {
+      background: var(--rose-bg);
+      border-color: var(--rose-border);
+      box-shadow: inset 3px 0 0 var(--rose);
+    }
+
+    .scen-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .scen-top strong {
+      font-size: 0.88rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.66rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+
+    .b-green { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .b-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .b-purple { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+    .b-red { background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+
+    .scen-btn p {
+      font-size: 0.77rem;
+      color: var(--text-secondary);
+      line-height: 1.38;
+    }
+
+    .scen-btn code {
+      color: #cbd5e1;
+      font-size: 0.73rem;
+    }
+
+    /* Columna derecha: Banner explicativo + 4 filas de microservicios */
+    .explain-box {
+      background: rgba(99, 102, 241, 0.08);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: 10px;
+      padding: 11px 15px;
+      margin-bottom: 12px;
+    }
+
+    .explain-box h3 {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #e0e7ff;
+      margin-bottom: 3px;
+    }
+
+    .explain-box p {
+      font-size: 0.78rem;
+      color: #a5b4fc;
+      line-height: 1.38;
+    }
+
+    .services-list {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .service-item {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 13px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .service-item.st-EXITO {
+      background: linear-gradient(90deg, rgba(16, 185, 129, 0.1) 0%, var(--bg-elevated) 65%);
+      border-color: var(--emerald-border);
+      box-shadow: inset 3px 0 0 var(--emerald);
+    }
+
+    .service-item.st-CANCELADO {
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.12) 0%, var(--bg-elevated) 65%);
+      border-color: var(--amber-border);
+      box-shadow: inset 3px 0 0 var(--amber);
+    }
+
+    .service-item.st-IDEMPOTENCIA {
+      background: linear-gradient(90deg, rgba(168, 85, 247, 0.12) 0%, var(--bg-elevated) 65%);
+      border-color: var(--violet-border);
+      box-shadow: inset 3px 0 0 var(--violet);
+    }
+
+    .service-item.st-ERROR_DLQ {
+      background: linear-gradient(90deg, rgba(244, 63, 94, 0.12) 0%, var(--bg-elevated) 65%);
+      border-color: var(--rose-border);
+      box-shadow: inset 3px 0 0 var(--rose);
+    }
+
+    .service-item.st-IGNORADO {
+      background: rgba(18, 20, 29, 0.55);
+      border: 1px dashed rgba(255, 255, 255, 0.16);
+      opacity: 0.65;
+    }
+
+    .srv-top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .srv-title-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .srv-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: var(--text-secondary);
+    }
+
+    .st-EXITO .srv-icon { color: #34d399; border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.1); }
+    .st-CANCELADO .srv-icon { color: #fbbf24; border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.12); }
+    .st-IDEMPOTENCIA .srv-icon { color: #c084fc; border-color: rgba(168, 85, 247, 0.35); background: rgba(168, 85, 247, 0.12); }
+    .st-ERROR_DLQ .srv-icon { color: #fb7185; border-color: rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.1); }
+
+    .srv-name {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .srv-right-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .srv-body-text {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      padding-left: 40px;
+      word-break: break-word;
+    }
+
+    .srv-body-text b {
+      color: #f1f5f9;
+      font-weight: 600;
+    }
+
+    .topic-chip {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      color: var(--text-secondary);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 5px;
+    }
+
+    .srv-status {
+      font-size: 0.73rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .st-EXITO .srv-status { color: #34d399; }
+    .st-CANCELADO .srv-status { color: #fbbf24; }
+    .st-IDEMPOTENCIA .srv-status { color: #c084fc; }
+    .st-ERROR_DLQ .srv-status { color: #fb7185; }
+
+    /* ==========================================
+       SECCIÓN 2: TABLA DE COLAS EN RABBITMQ
+       ========================================== */
+    .table-wrap {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th {
+      background: #0e1017;
+      color: var(--text-secondary);
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 13px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255, 255, 255, 0.015); }
+
+    /* ==========================================
+       SECCIÓN 3: INSPECTOR DE SOBRES JSON
+       ========================================== */
+    .events-grid {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .event-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 440px;
+      overflow-y: auto;
+    }
+
+    .ev-btn {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 14px;
+      text-align: left;
+      color: var(--text-primary);
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .ev-btn:hover, .ev-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    .json-pre {
+      background: #0b0d13;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.79rem;
+      line-height: 1.55;
+      color: #e2e8f0;
+      max-height: 440px;
+      overflow: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BARRA DE NAVEGACIÓN EN UNA SOLA LÍNEA -->
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+        </div>
+        <span class="brand-title">Demo EDA y Patrón Pub/Sub</span>
+        <span class="brand-tag">UTN • Sistemas Distribuidos</span>
+      </div>
+
+      <div class="nav-tabs">
+        <button class="nav-tab active" id="tab-simulador" onclick="mostrarSeccion('simulador')">
+          <span class="tab-num">1</span> Simulador de Eventos
+        </button>
+        <button class="nav-tab" id="tab-colas" onclick="mostrarSeccion('colas')">
+          <span class="tab-num">2</span> Colas y Tópicos en RabbitMQ
+        </button>
+        <button class="nav-tab" id="tab-json" onclick="mostrarSeccion('json')">
+          <span class="tab-num">3</span> Sobres de Eventos (JSON)
+        </button>
+      </div>
+
+      <div class="nav-right">
+        <span class="broker-pill">
+          <span class="status-dot"></span>
+          RabbitMQ Conectado
+        </span>
+        <button class="btn-ghost" onclick="limpiarBitacora()">Reiniciar</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- =================================================================
+         SECCIÓN 1: SIMULADOR DE EVENTOS (2 PANELES SIMÉTRICOS)
+         ================================================================= -->
+    <section class="section-view active" id="vista-simulador">
+      <div class="section-head">
+        <div>
+          <h2>1. Simulador de Eventos de Negocio y Reacción Pub/Sub</h2>
+          <p>Dispara un hecho de negocio en el Productor (<code>api-pedidos</code>) y observa cómo responde cada microservicio suscriptor de forma desacoplada.</p>
+        </div>
+      </div>
+
+      <div class="simulator-layout">
+
+        <!-- IZQUIERDA: 4 Botones de Escenarios -->
+        <div class="panel-card">
+          <div>
+            <div class="panel-header">
+              <span class="panel-title">Elegí qué evento publicar</span>
+              <span class="panel-meta">Productor: api-pedidos</span>
+            </div>
+
+            <div class="scenario-buttons">
+              <button class="scen-btn" id="btnScen1" onclick="dispararPedidoNormal()">
+                <div class="scen-top">
+                  <strong>1. Crear Pedido de Compra</strong>
+                  <span class="badge b-green">Evento Fat / ECST</span>
+                </div>
+                <p>Publica <code>PedidoCreado</code> en el tópico <code>pedido.creado</code>. Los 4 servicios reciben el estado completo y actúan en paralelo.</p>
+              </button>
+
+              <button class="scen-btn" id="btnScen2" onclick="dispararCancelacionSelectiva()">
+                <div class="scen-top">
+                  <strong>2. Cancelar Pedido</strong>
+                  <span class="badge b-amber">Evento Thin + Filtro</span>
+                </div>
+                <p>Publica <code>PedidoCancelado</code> en <code>pedido.cancelado</code>. Inventario, Facturación y Notificaciones actúan; <b>Envíos lo ignora</b>.</p>
+              </button>
+
+              <button class="scen-btn" id="btnScen3" onclick="dispararDuplicadoIdempotencia()">
+                <div class="scen-top">
+                  <strong>3. Simular Reintento Duplicado</strong>
+                  <span class="badge b-purple">Idempotencia</span>
+                </div>
+                <p>Envía 2 veces el mismo <code>idEvento</code>. Demuestra que los consumidores detectan el repetido y no cobran dos veces.</p>
+              </button>
+
+              <button class="scen-btn" id="btnScen4" onclick="dispararErrorDLQ()">
+                <div class="scen-top">
+                  <strong>4. Enviar Pedido Inválido (-$50)</strong>
+                  <span class="badge b-red">Fallo → DLQ</span>
+                </div>
+                <p>Los consumidores rechazan el mensaje con error (<code>NACK</code>) y RabbitMQ lo aísla en la Cola de Mensajes Muertos.</p>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- DERECHA: Respuesta de los 4 Microservicios -->
+        <div class="panel-card">
+          <div>
+            <div class="panel-header">
+              <span class="panel-title">Respuesta de los Microservicios Suscriptores</span>
+              <span class="panel-meta" id="etiquetaUltimoTopico">Tópico: esperando...</span>
+            </div>
+
+            <div class="explain-box">
+              <h3 id="tituloExplicacion">Seleccioná uno de los 4 escenarios de la izquierda</h3>
+              <p id="textoExplicacion">Aquí verás al instante qué microservicios recibieron el evento desde RabbitMQ y qué operación ejecutó cada uno.</p>
+            </div>
+
+            <div class="services-list" id="listaEstadoServicios"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- =================================================================
+         SECCIÓN 2: COLAS Y TÓPICOS EN RABBITMQ
+         ================================================================= -->
+    <section class="section-view" id="vista-colas">
+      <div class="section-head">
+        <div>
+          <h2>2. Estado de las Colas e Intercambiador en RabbitMQ</h2>
+          <p>Métricas consultadas en tiempo real al broker RabbitMQ sobre el intercambiador <code>intercambiador_pedidos</code> (tipo <code>topic</code>).</p>
+        </div>
+        <a class="btn-ghost" href="http://localhost:15672" target="_blank">Abrir consola interna RabbitMQ (:15672) ↗</a>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Cola en RabbitMQ</th>
+              <th>Microservicio Consumidor</th>
+              <th>Tópicos Suscritos (Bindings)</th>
+              <th>Estado Consumidor</th>
+              <th>En Espera</th>
+              <th>Procesados (ACK)</th>
+            </tr>
+          </thead>
+          <tbody id="tablaColasBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- =================================================================
+         SECCIÓN 3: INSPECTOR DE SOBRES DE EVENTOS (JSON)
+         ================================================================= -->
+    <section class="section-view" id="vista-json">
+      <div class="section-head">
+        <div>
+          <h2>3. Inspector de Sobres de Eventos Publicados (EventEnvelope)</h2>
+          <p>Estructura exacta del mensaje de evento (metadatos de trazabilidad, versión, correlación y datos) publicado en RabbitMQ.</p>
+        </div>
+      </div>
+
+      <div class="events-grid">
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-title">Historial de Eventos</span>
+          </div>
+          <div class="event-list" id="listaSelectorEventos"></div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-header">
+            <span class="panel-title">Contenido JSON del Sobre (EventEnvelope)</span>
+          </div>
+          <pre class="json-pre" id="visorJsonDetalle">Todavía no se ha emitido ningún evento en esta sesión.</pre>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    let ultimoIdPedidoCreado = 'PED-UTN-101';
+    let contadorSecuencia = 101;
+    let indiceEventoSeleccionado = 0;
+    let escenarioActivo = null; // 'creado', 'cancelado', 'idempotencia', 'dlq'
+
+    const ordenColas = [
+      'cola_inventario',
+      'cola_facturacion',
+      'cola_envios',
+      'cola_notificaciones'
+    ];
+
+    const iconosSvg = {
+      cola_inventario: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
+      cola_facturacion: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`,
+      cola_envios: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>`,
+      cola_notificaciones: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`
+    };
+
+    function mostrarSeccion(nombre) {
+      ['simulador', 'colas', 'json'].forEach((sec) => {
+        document.getElementById(`vista-${sec}`).classList.toggle('active', sec === nombre);
+        document.getElementById(`tab-${sec}`).classList.toggle('active', sec === nombre);
+      });
+    }
+
+    function marcarBotonActivo(idBoton, clase) {
+      ['btnScen1', 'btnScen2', 'btnScen3', 'btnScen4'].forEach((id) => {
+        document.getElementById(id).className = 'scen-btn';
+      });
+      document.getElementById(idBoton).classList.add(clase);
+    }
+
+    function setExplicacion(titulo, texto) {
+      document.getElementById('tituloExplicacion').textContent = titulo;
+      document.getElementById('textoExplicacion').textContent = texto;
+    }
+
+    async function dispararPedidoNormal() {
+      marcarBotonActivo('btnScen1', 'selected-green');
+      escenarioActivo = 'creado';
+      contadorSecuencia++;
+      const idPedido = `PED-UTN-${contadorSecuencia}`;
+      ultimoIdPedidoCreado = idPedido;
+      indiceEventoSeleccionado = 0;
+
+      setExplicacion(
+        `Evento 'PedidoCreado' (${idPedido}) publicado en el tópico 'pedido.creado'`,
+        `Es un evento ECST (Fat Event): transporta todos los datos del pedido. Los 4 microservicios están suscritos a este tópico y trabajaron en paralelo.`
+      );
+
+      await fetch('/pedidos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idPedido,
+          cliente: {
+            nombre: 'Estudiante UTN',
+            correo: 'alumno@utn.edu.ar',
+            direccion: 'French 414, Resistencia, Chaco'
+          },
+          articulos: [
+            { codigo: 'NOTEBOOK-PRO', nombre: 'Notebook Desarrollo 16GB', cantidad: 1, precio: 1200 },
+            { codigo: 'MOUSE-INAL', nombre: 'Mouse Inalámbrico', cantidad: 1, precio: 50 }
+          ],
+          total: 1250
+        })
+      });
+      setTimeout(actualizarEstado, 280);
+    }
+
+    async function dispararCancelacionSelectiva() {
+      marcarBotonActivo('btnScen2', 'selected-amber');
+      escenarioActivo = 'cancelado';
+      indiceEventoSeleccionado = 0;
+
+      setExplicacion(
+        `Evento Ligero 'PedidoCancelado' (${ultimoIdPedidoCreado}) publicado en 'pedido.cancelado'`,
+        `Enrutamiento Selectivo: Inventario, Facturación y Notificaciones reaccionaron en ámbar, mientras que el Servicio de Envíos ignoró el evento porque solo escucha 'pedido.creado'.`
+      );
+
+      await fetch(`/pedidos/${ultimoIdPedidoCreado}/cancelar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          motivo: 'Cancelado a solicitud del cliente'
+        })
+      });
+      setTimeout(actualizarEstado, 280);
+    }
+
+    async function dispararDuplicadoIdempotencia() {
+      marcarBotonActivo('btnScen3', 'selected-purple');
+      escenarioActivo = 'idempotencia';
+      contadorSecuencia++;
+      const idPedido = `PED-IDEMP-${contadorSecuencia}`;
+      const idEventoFijo = `EVT-DUP-${Math.floor(100 + Math.random() * 900)}`;
+      indiceEventoSeleccionado = 0;
+
+      setExplicacion(
+        `Evento '${idEventoFijo}' enviado 2 veces seguidas (Prueba de Idempotencia)`,
+        `Ante un reintento de red (At-Least-Once), los 4 microservicios procesaron el primer mensaje y descartaron el duplicado sin cobrar ni descontar stock dos veces.`
+      );
+
+      const payload = {
+        idEvento: idEventoFijo,
+        idPedido,
+        version: 1,
+        cliente: {
+          nombre: 'Carlos Ruiz',
+          correo: 'carlos@utn.edu.ar',
+          direccion: '9 de Julio 500, Corrientes'
+        },
+        articulos: [
+          { codigo: 'TECLADO-MEC', nombre: 'Teclado Mecánico', cantidad: 1, precio: 180 }
+        ],
+        total: 180
+      };
+
+      await fetch('/pedidos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      setTimeout(async () => {
+        await fetch('/pedidos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        setTimeout(actualizarEstado, 280);
+      }, 600);
+    }
+
+    async function dispararErrorDLQ() {
+      marcarBotonActivo('btnScen4', 'selected-red');
+      escenarioActivo = 'dlq';
+      contadorSecuencia++;
+      const idPedido = `PED-ERROR-${contadorSecuencia}`;
+      indiceEventoSeleccionado = 0;
+
+      setExplicacion(
+        `Pedido defectuoso (${idPedido} con monto -$50) rechazado y derivado a la DLQ`,
+        `Inventario, Facturación y Envíos rechazaron el mensaje con NACK y RabbitMQ lo apartó automáticamente en 'cola_mensajes_muertos' (ver Sección 2).`
+      );
+
+      await fetch('/pedidos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idPedido,
+          simularFallo: true,
+          cliente: {
+            nombre: 'Prueba DLQ',
+            correo: 'auditoria@utn.edu.ar',
+            direccion: 'Sin dirección'
+          },
+          articulos: [
+            { codigo: 'ITEM-ROTO', nombre: 'Artículo Inválido', cantidad: 1, precio: -50 }
+          ],
+          total: -50
+        })
+      });
+      setTimeout(actualizarEstado, 320);
+    }
+
+    async function limpiarBitacora() {
+      await fetch('/actividad/limpiar', { method: 'POST' });
+      escenarioActivo = null;
+      ['btnScen1', 'btnScen2', 'btnScen3', 'btnScen4'].forEach((id) => {
+        document.getElementById(id).className = 'scen-btn';
+      });
+      setExplicacion(
+        'Seleccioná uno de los 4 escenarios de la izquierda',
+        'Aquí verás al instante qué microservicios recibieron el evento desde RabbitMQ y qué operación ejecutó cada uno.'
+      );
+      document.getElementById('etiquetaUltimoTopico').textContent = 'Tópico: esperando...';
+      actualizarEstado();
+    }
+
+    function renderizarTodo(datos) {
+      const colas = datos.colas || [];
+      const colasMap = new Map(colas.map((c) => [c.nombreTecnico, c]));
+      const bitacora = datos.bitacoraActividad || [];
+      const eventos = datos.eventosPublicados || [];
+      const ultimoEvento = eventos[0] || null;
+
+      if (ultimoEvento) {
+        document.getElementById('etiquetaUltimoTopico').textContent = `Último tópico: ${ultimoEvento.topico}`;
+      }
+
+      // 1. Renderizar los 4 servicios en la Sección 1
+      const contenedorServicios = document.getElementById('listaEstadoServicios');
+      contenedorServicios.innerHTML = ordenColas.map((nombreCola) => {
+        const infoCola = colasMap.get(nombreCola) || {
+          nombreMostrar: nombreCola,
+          servicio: nombreCola,
+          topicos: []
+        };
+
+        const reaccion = bitacora.find((b) => b.cola === nombreCola);
+
+        let clase = '';
+        let titulo = 'Listo y escuchando en su cola';
+        let detalle = infoCola.rol || '';
+        let etiquetaDerecha = 'En espera';
+        let claseBadgeEmitido = 'b-green';
+
+        if (escenarioActivo === 'cancelado' && nombreCola === 'cola_envios') {
+          clase = 'st-IGNORADO';
+          titulo = 'Evento PedidoCancelado ignorado (No suscrito a pedido.cancelado)';
+          detalle = 'RabbitMQ filtró el mensaje en el intercambiador porque Envíos solo está suscrito a pedido.creado.';
+          etiquetaDerecha = '○ Filtrado por Tópico';
+        } else if (reaccion) {
+          const esFlujoCancelacion = escenarioActivo === 'cancelado' || reaccion.topico === 'pedido.cancelado' || reaccion.topico === 'inventario.restituido' || reaccion.topico === 'facturacion.anulada';
+
+          if (reaccion.estado === 'IDEMPOTENCIA') {
+            clase = 'st-IDEMPOTENCIA';
+            etiquetaDerecha = '▲ Duplicado Ignorado';
+            claseBadgeEmitido = 'b-purple';
+          } else if (reaccion.estado === 'ERROR_DLQ') {
+            clase = 'st-ERROR_DLQ';
+            etiquetaDerecha = '✕ Rechazado → DLQ';
+            claseBadgeEmitido = 'b-red';
+          } else if (esFlujoCancelacion) {
+            clase = 'st-CANCELADO';
+            etiquetaDerecha = '● Cancelación Procesada (ACK)';
+            claseBadgeEmitido = 'b-amber';
+          } else {
+            clase = 'st-EXITO';
+            etiquetaDerecha = '● Procesado (ACK)';
+            claseBadgeEmitido = 'b-green';
+          }
+
+          titulo = `${reaccion.titulo} (${reaccion.idPedido})`;
+          detalle = reaccion.detalle;
+        }
+
+        const badgeEventoEmitido = (reaccion && reaccion.eventoEmitido && clase !== 'st-IGNORADO')
+          ? `<span class="badge ${claseBadgeEmitido}">📢 Emitió: ${reaccion.eventoEmitido.tipoEvento} (${reaccion.eventoEmitido.topico})</span>`
+          : '';
+
+        return `
+          <div class="service-item ${clase}">
+            <div class="srv-top-row">
+              <div class="srv-title-group">
+                <div class="srv-icon">${iconosSvg[nombreCola] || ''}</div>
+                <span class="srv-name">${infoCola.servicio}</span>
+                ${badgeEventoEmitido}
+              </div>
+              <div class="srv-right-meta">
+                <span class="topic-chip">Escucha: ${(infoCola.topicos || []).join(', ')}</span>
+                <span class="srv-status">${etiquetaDerecha}</span>
+              </div>
+            </div>
+            <div class="srv-body-text">
+              <b>${titulo}</b> — ${detalle}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // 2. Renderizar tabla de colas en la Sección 2
+      const tbody = document.getElementById('tablaColasBody');
+      tbody.innerHTML = colas.map((c) => {
+        const estadoHtml = c.esDLQ
+          ? `<span class="badge b-red">Cola de Aislamiento (DLQ)</span>`
+          : c.consumidoresActivos > 0
+            ? `<span class="badge b-green">● ${c.consumidoresActivos} Activo</span>`
+            : `<span class="badge b-red">○ Detenido</span>`;
+
+        return `
+          <tr>
+            <td>
+              <strong>${c.nombreMostrar}</strong><br/>
+              <code style="font-size:0.75rem;color:var(--text-secondary)">${c.nombreTecnico}</code>
+            </td>
+            <td style="color:var(--text-secondary)">${c.servicio}</td>
+            <td><span class="topic-chip">${(c.topicos || []).join(' , ')}</span></td>
+            <td>${estadoHtml}</td>
+            <td><b class="mono" style="font-size:0.95rem;color:${c.mensajesListos > 0 ? '#fb7185' : 'var(--text-primary)'}">${c.mensajesListos}</b></td>
+            <td><b class="mono" style="font-size:0.95rem;color:#818cf8">${c.totalConfirmadosAck}</b></td>
+          </tr>
+        `;
+      }).join('');
+
+      // 3. Renderizar selector de eventos JSON en la Sección 3
+      const listaEv = document.getElementById('listaSelectorEventos');
+      const visorJson = document.getElementById('visorJsonDetalle');
+
+      if (eventos.length === 0) {
+        listaEv.innerHTML = `<p style="color:var(--text-secondary);font-size:0.84rem">Aún no se han publicado eventos.</p>`;
+        visorJson.textContent = 'Todavía no se ha emitido ningún evento en esta sesión.';
+      } else {
+        if (indiceEventoSeleccionado >= eventos.length) indiceEventoSeleccionado = 0;
+        listaEv.innerHTML = eventos.map((ev, idx) => {
+          const hora = new Date(ev.fechaHora).toLocaleTimeString('es-AR');
+          return `
+            <button class="ev-btn ${idx === indiceEventoSeleccionado ? 'active' : ''}" onclick="seleccionarEvento(${idx})">
+              <div style="display:flex;justify-content:space-between;font-size:0.84rem;margin-bottom:3px">
+                <strong>${ev.tipoEvento} (${ev.idPedido})</strong>
+                <span class="mono" style="font-size:0.74rem;color:var(--text-secondary)">${hora}</span>
+              </div>
+              <div class="mono" style="font-size:0.72rem;color:var(--text-secondary)">
+                Emisor: <b style="color:#a5b4fc">${ev.productor || 'api-pedidos'}</b> • Tópico: ${ev.topico}
+              </div>
+            </button>
+          `;
+        }).join('');
+        visorJson.textContent = JSON.stringify(eventos[indiceEventoSeleccionado], null, 2);
+      }
+    }
+
+    function seleccionarEvento(idx) {
+      indiceEventoSeleccionado = idx;
+      actualizarEstado();
+    }
+
+    async function actualizarEstado() {
+      try {
+        const resp = await fetch('/estado-sistema');
+        if (!resp.ok) return;
+        const datos = await resp.json();
+        renderizarTodo(datos);
+      } catch (_) {}
+    }
+
+    actualizarEstado();
+    setInterval(actualizarEstado, 1200);
+  </script>
+</body>
+</html>

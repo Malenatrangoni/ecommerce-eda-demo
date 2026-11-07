@@ -1,15 +1,13 @@
-version: '3.8'
-
 services:
   # ==========================================
-  # Message Broker: RabbitMQ con Management UI
+  # Broker de Mensajería: RabbitMQ con Panel Web
   # ==========================================
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: rabbitmq-broker
+    container_name: broker-rabbitmq
     ports:
       - "5672:5672"     # Puerto AMQP
-      - "15672:15672"   # Management Dashboard Web UI
+      - "15672:15672"   # Panel de Administración Web
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -20,86 +18,118 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - eda-network
+      - red-eda
 
   # ==========================================
-  # Microservicio Productor: Orders API
+  # Microservicio Productor: API de Pedidos
   # ==========================================
-  orders-api:
+  api-pedidos:
     build:
-      context: ./orders-api
+      context: ./api-pedidos
       dockerfile: Dockerfile
-    container_name: orders-api-producer
+    container_name: productor-api-pedidos
     restart: on-failure
     ports:
       - "3000:3000"
     environment:
-      PORT: 3000
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      EXCHANGE_NAME: pedidos_exchange
+      PUERTO: 3000
+      URL_RABBITMQ: amqp://guest:guest@rabbitmq:5672
+      URL_ADMIN_RABBITMQ: http://rabbitmq:15672
+      NOMBRE_INTERCAMBIADOR: intercambiador_pedidos
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
-      - eda-network
+      - red-eda
 
   # ==========================================
-  # Suscriptor 1: Inventory Service
+  # Suscriptor 1: Servicio de Inventario (pedido.creado, pedido.cancelado)
   # ==========================================
-  inventory-service:
+  servicio-inventario:
     build:
-      context: ./inventory-service
+      context: ./servicio-inventario
       dockerfile: Dockerfile
-    container_name: inventory-service-worker
+    container_name: consumidor-inventario
     restart: on-failure
     environment:
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      EXCHANGE_NAME: pedidos_exchange
-      QUEUE_NAME: inventario_queue
+      URL_RABBITMQ: amqp://guest:guest@rabbitmq:5672
+      URL_API_PEDIDOS: http://api-pedidos:3000
+      NOMBRE_INTERCAMBIADOR: intercambiador_pedidos
+      NOMBRE_COLA: cola_inventario
+      INTERCAMBIADOR_DLQ: intercambiador_dlq
+      COLA_DLQ: cola_mensajes_muertos
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
-      - eda-network
+      - red-eda
 
   # ==========================================
-  # Suscriptor 2: Billing Service
+  # Suscriptor 2: Servicio de Facturación (pedido.creado, pedido.cancelado)
   # ==========================================
-  billing-service:
+  servicio-facturacion:
     build:
-      context: ./billing-service
+      context: ./servicio-facturacion
       dockerfile: Dockerfile
-    container_name: billing-service-worker
+    container_name: consumidor-facturacion
     restart: on-failure
     environment:
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      EXCHANGE_NAME: pedidos_exchange
-      QUEUE_NAME: facturacion_queue
+      URL_RABBITMQ: amqp://guest:guest@rabbitmq:5672
+      URL_API_PEDIDOS: http://api-pedidos:3000
+      NOMBRE_INTERCAMBIADOR: intercambiador_pedidos
+      NOMBRE_COLA: cola_facturacion
+      INTERCAMBIADOR_DLQ: intercambiador_dlq
+      COLA_DLQ: cola_mensajes_muertos
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
-      - eda-network
+      - red-eda
 
   # ==========================================
-  # Suscriptor 3: Shipping Service
+  # Suscriptor 3: Servicio de Envíos (solo pedido.creado)
   # ==========================================
-  shipping-service:
+  servicio-envios:
     build:
-      context: ./shipping-service
+      context: ./servicio-envios
       dockerfile: Dockerfile
-    container_name: shipping-service-worker
+    container_name: consumidor-envios
     restart: on-failure
     environment:
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      EXCHANGE_NAME: pedidos_exchange
-      QUEUE_NAME: envios_queue
+      URL_RABBITMQ: amqp://guest:guest@rabbitmq:5672
+      URL_API_PEDIDOS: http://api-pedidos:3000
+      NOMBRE_INTERCAMBIADOR: intercambiador_pedidos
+      NOMBRE_COLA: cola_envios
+      INTERCAMBIADOR_DLQ: intercambiador_dlq
+      COLA_DLQ: cola_mensajes_muertos
     depends_on:
       rabbitmq:
         condition: service_healthy
     networks:
-      - eda-network
+      - red-eda
+
+  # ==========================================
+  # Suscriptor 4: Servicio de Notificaciones y Auditoría (comodín pedido.#)
+  # ==========================================
+  servicio-notificaciones:
+    build:
+      context: ./servicio-notificaciones
+      dockerfile: Dockerfile
+    container_name: consumidor-notificaciones
+    restart: on-failure
+    environment:
+      URL_RABBITMQ: amqp://guest:guest@rabbitmq:5672
+      URL_API_PEDIDOS: http://api-pedidos:3000
+      NOMBRE_INTERCAMBIADOR: intercambiador_pedidos
+      NOMBRE_COLA: cola_notificaciones
+      INTERCAMBIADOR_DLQ: intercambiador_dlq
+      COLA_DLQ: cola_mensajes_muertos
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - red-eda
 
 networks:
-  eda-network:
+  red-eda:
     driver: bridge
