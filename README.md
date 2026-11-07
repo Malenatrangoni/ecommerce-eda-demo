@@ -87,8 +87,8 @@ docker compose up --build -d
 docker compose ps
 ```
 Verás los **6 contenedores** activos:
-* `broker-rabbitmq` (puertos `5672` y panel web en `15672`)
-* `productor-api-pedidos` (puerto HTTP `3000`)
+* `broker-rabbitmq` (puertos `5672` y panel interno en `15672`)
+* `productor-api-pedidos` (puerto HTTP `3000` — **incluye la Interfaz Web Interactiva**)
 * `consumidor-inventario`
 * `consumidor-facturacion`
 * `consumidor-envios`
@@ -96,21 +96,31 @@ Verás los **6 contenedores** activos:
 
 ---
 
-## 🎯 4. Ejecución de la Demo en Vivo (`demo.ps1`)
+## 🖥️ 4. Usar la Interfaz Web Interactiva (Recomendado para la Demo)
 
-El repositorio incluye un script interactivo en PowerShell (`demo.ps1`) diseñado para demostrar en vivo cada uno de los escenarios durante el coloquio:
+Una vez que los contenedores están corriendo (`docker compose up --build -d`), **no necesitas usar la terminal para disparar las pruebas**. Simplemente abre tu navegador web en:
+
+👉 **[http://localhost:3000](http://localhost:3000)**
+
+En la interfaz web (100% en español) encontrarás **3 secciones**:
+1. **1. Simulador de Eventos:** Panel con 4 botones interactivos para disparar en 1 clic cada escenario y ver en tiempo real cómo reaccionan los 4 microservicios y qué nuevos eventos coreografiados emiten:
+   * **1. Crear Pedido de Compra (`Evento Fat / ECST`):** Publica `PedidoCreado` en `pedido.creado` y muestra a los 4 servicios procesando en paralelo y emitiendo `StockReservado`, `FacturaEmitida` y `EnvioProgramado`.
+   * **2. Cancelar Pedido (`Evento Thin + Filtro por Tópico`):** Publica `PedidoCancelado` en `pedido.cancelado`. Muestra cómo Inventario, Facturación y Notificaciones actúan, mientras que **Envíos lo ignora** (filtrado en RabbitMQ).
+   * **3. Simular Reintento Duplicado (`Idempotencia`):** Envía 2 veces seguidas el mismo `idEvento` y demuestra cómo los consumidores bloquean el cobro o descuento duplicado.
+   * **4. Enviar Pedido Inválido (`Fallo → DLQ`):** Envía un pedido con monto negativo (`-$50`), los consumidores responden `NACK` y RabbitMQ lo aísla en `cola_mensajes_muertos`.
+2. **2. Colas y Tópicos en RabbitMQ:** Tabla en tiempo real que consulta al broker y muestra las 5 colas, sus tópicos suscritos (*bindings*), consumidores activos, mensajes en espera y mensajes confirmados (`ACK`).
+3. **3. Sobres de Eventos (JSON):** Inspector para ver el JSON completo (`EventEnvelope`) de cada evento publicado en la cadena coreografiada.
+
+---
+
+## 🎯 5. Alternativa por Consola (`demo.ps1` / `demo.bat`)
+
+Si además deseas ejecutar las pruebas desde la terminal (incluyendo la detención y arranque automático del contenedor de facturación), puedes correr:
 
 ```powershell
-.\demo.ps1
+.\demo.bat
 ```
-
-También puedes ejecutar cada escenario directamente por número o correr todos en secuencia:
-* `.\demo.ps1 1` — **Escenario 1 (Pub/Sub Concurrente, Coreografía y Evento Fat / ECST):** Crea un pedido (`POST /pedidos`) y muestra cómo los 4 consumidores reaccionan en paralelo sin bloquear al cliente.
-* `.\demo.ps1 2` — **Escenario 2 (Enrutamiento Selectivo por Tópicos y Evento Thin):** Cancela el pedido (`POST /pedidos/PED-UTN-101/cancelar`). Demuestra que Inventario, Facturación y Notificaciones reciben el evento ligero `pedido.cancelado`, mientras que Envíos (suscrito sólo a `pedido.creado`) no es invocado.
-* `.\demo.ps1 3` — **Escenario 3 (Desacople Temporal y Recuperación ante Caída):** Detiene `servicio-facturacion`, emite un nuevo pedido, verifica mediante la API de RabbitMQ que el mensaje quedó retenido en `cola_facturacion`, vuelve a encender el contenedor y comprueba el procesamiento diferido automático.
-* `.\demo.ps1 4` — **Escenario 4 (Idempotencia y Control de Versiones):** Envía dos veces seguidas un evento con el mismo `idEvento` (`EVT-DUPLICADO-999`) y demuestra cómo todos los consumidores detectan el duplicado y evitan cobrar o descontar stock por duplicado.
-* `.\demo.ps1 5` — **Escenario 5 (Cola de Mensajes Muertos / DLQ):** Envía un pedido con datos inválidos (`total: -50`, `simularFallo: true`) y comprueba cómo los consumidores rechazan el mensaje (`NACK`) y RabbitMQ lo aísla en `cola_mensajes_muertos`.
-* `.\demo.ps1 todos` — Ejecuta los 5 escenarios de principio a fin.
+*(O `powershell -ExecutionPolicy Bypass -File .\demo.ps1`)*.
 
 ---
 
