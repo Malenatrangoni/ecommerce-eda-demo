@@ -1,7 +1,7 @@
 {
-  "name": "orders-api",
+  "name": "api-pedidos",
   "version": "1.0.0",
-  "description": "Microservicio Productor de Pedidos (Orders API)",
+  "description": "Microservicio Productor de Pedidos (API de Pedidos)",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js"

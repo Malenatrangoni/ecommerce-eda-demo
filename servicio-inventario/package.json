@@ -1,7 +1,7 @@
 {
-  "name": "billing-service",
+  "name": "servicio-inventario",
   "version": "1.0.0",
-  "description": "Microservicio Suscriptor: Facturación y Cobranza",
+  "description": "Microservicio Suscriptor: Gestión y Reserva de Inventario",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js"

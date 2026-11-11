@@ -1,7 +1,7 @@
 {
-  "name": "shipping-service",
+  "name": "servicio-facturacion",
   "version": "1.0.0",
-  "description": "Microservicio Suscriptor: Despacho y Logística de Envíos",
+  "description": "Microservicio Suscriptor: Facturación y Cobranza",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js"

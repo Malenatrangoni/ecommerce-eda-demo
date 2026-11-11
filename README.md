@@ -1,187 +1,143 @@
-# Arquitectura Orientada a Eventos (EDA) con Microservicios y RabbitMQ (Pub/Sub)
-**Universidad Tecnológica Nacional (UTN)**  
-*Demostración práctica de desacoplamiento, concurrencia y mensajería asíncrona con Node.js y Docker.*
+# Arquitectura Orientada a Eventos (EDA) y Patrón Publicación/Suscripción (Pub/Sub) con RabbitMQ
+**Universidad Tecnológica Nacional (UTN) — Desarrollo de Software**  
+*Implementación práctica integrada de desacoplamiento espacial, temporal y de ejecución, enrutamiento por tópicos, eventos ECST vs. Thin, idempotencia y Cola de Mensajes Muertos (DLQ).*
 
 ---
 
-## 1. Descripción del Proyecto
+## 1. Descripción del Proyecto y Conceptos Demostrados
 
-Este repositorio contiene una solución completa basada en una **Arquitectura Orientada a Eventos (Event-Driven Architecture - EDA)** aplicando el patrón **Publicador/Suscriptor (Pub/Sub)** sobre un broker de mensajería **RabbitMQ**.
+Este repositorio implementa una **Arquitectura Orientada a Eventos (EDA)** apoyada en el patrón **Publicación/Suscripción (Pub/Sub)** mediante **RabbitMQ** y microservicios en **Node.js** contenerizados con **Docker**.
 
-### ¿Qué problema resolvemos con EDA?
-En un diseño monolítico o síncrono tradicional (HTTP REST directo entre servicios), cuando un cliente realiza una compra, el servicio de órdenes debe invocar secuencialmente a Inventario, Facturación y Envíos. Si cualquiera de ellos falla, responde lento o está caído, la operación completa se bloquea o falla.
+A diferencia de una arquitectura acoplada por llamadas HTTP síncronas en cascada, este escenario demuestra en vivo todos los fundamentos analizados en el informe teórico:
 
-Con **EDA y RabbitMQ**:
-1. **Desacoplamiento total**: El servicio productor (`orders-api`) no conoce qué servicios existen detrás ni cuántos son; únicamente publica el evento de negocio `PedidoCreado` en un **Exchange** de tipo `fanout`.
-2. **Difusión en Abanico (Fanout)**: RabbitMQ clona y entrega el mensaje en tiempo real a todas las colas suscritas (`inventario_queue`, `facturacion_queue`, `envios_queue`).
-3. **Procesamiento Concurrente y Paralelo**: Los microservicios consumidores procesan el pedido de forma simultánea e independiente sin bloquear la respuesta al usuario final.
-4. **Tolerancia a Fallos y Fiabilidad (Manual ACK)**: Los workers confirman la recepción (`channel.ack(msg)`) sólo cuando completaron el procesamiento. Si un worker se detiene, el mensaje permanece seguro en RabbitMQ.
+1. **Separación entre EDA (Estilo Arquitectónico) y Pub/Sub (Mecanismo de Transporte):**
+   * **EDA** define *qué* se comunica: hechos históricos inmutables del dominio empaquetados en un **Sobre de Evento (`EventEnvelope`)** con metadatos de trazabilidad (`idEvento`, `tipoEvento`, `topico`, `fechaHora`, `idPedido`, `idCorrelacion`, `version` y `datos`).
+   * **Pub/Sub** define *cómo* se reparte: a través de un intercambiador (**Exchange**) de tipo `topic` (`intercambiador_pedidos`), el productor publica el evento una única vez sin conocer cuántos suscriptores existen ni dónde se ubican (**desacople espacial**).
+2. **Enrutamiento Selectivo por Tópicos y Comodines (`topic` exchange):**
+   * `cola_envios` se suscribe únicamente a `pedido.creado`.
+   * `cola_inventario` y `cola_facturacion` se suscriben a `pedido.creado` y `pedido.cancelado`.
+   * `cola_notificaciones` se suscribe mediante el comodín **`#`** (todos los tópicos), recibiendo tanto los eventos del pedido como los que publican los demás servicios (`StockReservado`, `FacturaEmitida`, `EnvioProgramado`, etc.), para alertas y auditoría.
+3. **Taxonomía de Eventos — *Event-Carried State Transfer (Fat / ECST)* vs. *Event Notification (Thin)*:**
+   * **`PedidoCreado` (Evento Fat / ECST):** Transporta el estado completo del pedido (`cliente`, `articulos`, `total`). Permite que Inventario, Facturación y Envíos operen de forma 100% autónoma sin realizar llamadas de retorno al productor.
+   * **`PedidoCancelado` (Evento Thin / Notificación Ligera):** Transporta únicamente el identificador `idPedido` y el `motivo`. Si un consumidor no posee el estado previo en caché local, realiza un *callback* síncrono `GET /pedidos/:idPedido` hacia la API de origen. El escenario 2 de `demo.ps1` reinicia `servicio-inventario` antes de cancelar para que este callback se observe (el botón de cancelación de la interfaz web no lo hace).
+4. **Desacople Temporal y Confirmación Manual (`Manual ACK`):**
+   * Las colas son durables y los mensajes persistentes. Si un consumidor (ej. `servicio-facturacion`) se detiene, el productor sigue operando con normalidad y RabbitMQ retiene los mensajes hasta que el servicio vuelve a estar en línea.
+5. **Garantía *At-Least-Once*, Idempotencia y Control de Versiones:**
+   * Cada consumidor registra los `idEvento` procesados y la última `version` aplicada por pedido (`version_entrante > version_almacenada`), evitando cobros duplicados o descuentos dobles de stock ante reintentos de red.
+6. **Aislamiento de Fallos con Cola de Mensajes Muertos (*Dead Letter Queue - DLQ*):**
+   * Todas las colas están vinculadas al intercambiador `intercambiador_dlq`. Si un mensaje falla en su validación o procesamiento, el consumidor emite `canal.nack(mensaje, false, false)` y RabbitMQ lo aparta automáticamente en `cola_mensajes_muertos` sin frenar el flujo principal.
+
+---
+
+## 2. Arquitectura de la Solución
 
 ```
-                      +-----------------------------+
-                      |   Cliente HTTP / Frontend   |
-                      +--------------+--------------+
-                                     |
-                             POST /orders
-                                     v
-                      +-----------------------------+
-                      |         orders-api          |
-                      |   (Productor del Evento)    |
-                      +--------------+--------------+
-                                     | Publica evento: "PedidoCreado"
-                                     v
-                      +-----------------------------+
-                      |  pedidos_exchange (Fanout)  |
-                      +-------+------+-------+------+
-                              |      |       |
-            +-----------------+      |       +-----------------+
-            | Difusión (Fanout)      | Difusión (Fanout)       | Difusión (Fanout)
-            v                        v                         v
-     [inventario_queue]      [facturacion_queue]        [envios_queue]
-            |                        |                         |
-            v                        v                         v
-+-----------------------+ +-----------------------+ +-----------------------+
-|   inventory-service   | |    billing-service    | |   shipping-service    |
-| (Descuenta de stock)  | |  (Emite la factura)   | | (Genera guía y flete) |
-+-----------------------+ +-----------------------+ +-----------------------+
+                           +-----------------------------------+
+                           |      Cliente HTTP / Script        |
+                           +-----------------+-----------------+
+                                             |
+                        POST /pedidos        |   POST /pedidos/:id/cancelar
+                        (Evento Fat / ECST)  |   (Evento Thin / Ligero)
+                                             v
+                           +-----------------------------------+
+                           |            api-pedidos            |
+                           |      (Productor del Dominio)      |
+                           +-----------------+-----------------+
+                                             | Publica Sobre de Evento (EventEnvelope)
+                                             v
+                           +-----------------------------------+
+                           |       intercambiador_pedidos      |
+                           |       (Exchange Tipo: TOPIC)      |
+                           +---+---------+---------+---------+--+
+                               |         |         |         |
+       +-----------------------+         |         |         +-----------------------+
+       | pedido.creado                   |         | pedido.creado                   | # (todo)
+       | pedido.cancelado                |         | (Selectivo)                     | (Comodín Global)
+       v                                 v         v                                 v
+[cola_inventario]              [cola_facturacion] [cola_envios]            [cola_notificaciones]
+       |                                 |         |                                 |
+       v                                 v         v                                 v
++---------------------+       +--------------------+ +-------------------+ +-------------------------+
+| servicio-inventario |       |servicio-facturacion| |  servicio-envios  | | servicio-notificaciones |
+| (Reserva/Repone)    |       | (Factura/Anula IVA)| | (Guía de Despacho)| |  (Correos y Auditoría)  |
++----------+----------+       +---------+----------+ +---------+---------+ +------------+------------+
+           |                            |                      |                        |
+           +----------------------------+-----------+----------+------------------------+
+                                                    | Si ocurre error -> NACK (sin reencolar)
+                                                    v
+                                    +-------------------------------+
+                                    |     cola_mensajes_muertos     |
+                                    |   (Dead Letter Queue - DLQ)   |
+                                    +-------------------------------+
 ```
 
 ---
 
-## 💻 2. Prerrequisitos
+## 💻 3. Puesta en Marcha
 
-Para ejecutar este entorno reproducible, únicamente necesitas tener instalado en tu máquina:
+### 3.1. Levantar todos los contenedores
+Desde la carpeta `ecommerce-eda-demo`, ejecutar:
 
-* [Docker Desktop](https://www.docker.com/products/docker-desktop/) (en Windows o macOS) con el motor de Docker iniciado.
-* O bien **Docker Engine** y el plugin **Docker Compose** (en distribuciones Linux).
-* Git (para clonar y versionar el repositorio).
-
-*(No es obligatorio tener Node.js instalado localmente, ya que cada microservicio corre dentro de su propio contenedor aislado).*
-
----
-
-## 🚀 3. Paso a Paso para Levantar el Entorno
-
-Desde la terminal, situarse en la raíz del proyecto y ejecutar:
-
-### 3.1. Iniciar los contenedores en segundo plano
 ```bash
 docker compose up --build -d
 ```
-*(Si usas versiones anteriores de Docker Compose, puedes usar `docker-compose up --build -d`)*.
-
-Este comando realizará automáticamente:
-1. La descarga de la imagen oficial de RabbitMQ (`rabbitmq:3-management-alpine`).
-2. El build de las imágenes Docker de cada microservicio en Node.js.
-3. La creación de la red puente `eda-network`.
-4. El arranque ordenado (los microservicios esperan a que RabbitMQ esté con estado `healthy` antes de iniciar).
 
 ### 3.2. Verificar el estado de los contenedores
 ```bash
 docker compose ps
 ```
-Deberás ver los 5 contenedores con estado **Up**:
-* `rabbitmq-broker` (puertos `5672` y `15672`)
-* `orders-api-producer` (puerto `3000`)
-* `inventory-service-worker`
-* `billing-service-worker`
-* `shipping-service-worker`
+Verás los **6 contenedores** activos:
+* `broker-rabbitmq` (puertos `5672` y panel interno en `15672`)
+* `productor-api-pedidos` (puerto HTTP `3000` — **incluye la Interfaz Web Interactiva**)
+* `consumidor-inventario`
+* `consumidor-facturacion`
+* `consumidor-envios`
+* `consumidor-notificaciones`
 
 ---
 
-##  4. Guía para la Demo en Vivo
+## 🖥️ 4. Usar la Interfaz Web Interactiva (Recomendado para la Demo)
 
-### Paso 1: Abrir la terminal de logs en tiempo real
-Para apreciar visualmente la concurrencia y el patrón Pub/Sub, abre una **segunda ventana de terminal** y ejecuta el siguiente comando para seguir los logs de los 3 microservicios consumidores a la vez:
+Una vez que los contenedores están corriendo (`docker compose up --build -d`), **no necesitas usar la terminal para disparar las pruebas**. Simplemente abre tu navegador web en:
 
-```bash
-docker compose logs -f inventory-service billing-service shipping-service
-```
+👉 **[http://localhost:3000](http://localhost:3000)**
 
-### Paso 2: Disparar la orden de compra de prueba (`POST /orders`)
-Desde tu primera terminal (o herramientas como Postman / Thunder Client), dispara la petición HTTP:
+En la interfaz web (100% en español) encontrarás **4 secciones**:
+1. **Simulador de Eventos:** Panel con 4 botones interactivos para disparar en 1 clic cada escenario y ver en tiempo real cómo reaccionan los 4 microservicios y qué nuevos eventos coreografiados emiten:
+   * **1. Crear Pedido de Compra (`Evento Fat / ECST`):** Publica `PedidoCreado` en `pedido.creado` y muestra a los 4 servicios procesando en paralelo y emitiendo `StockReservado`, `FacturaEmitida` y `EnvioProgramado`.
+   * **2. Cancelar Pedido (`Evento Thin + Filtro por Tópico`):** Publica `PedidoCancelado` en `pedido.cancelado`. Muestra cómo Inventario, Facturación y Notificaciones actúan, mientras que **Envíos lo ignora** (filtrado en RabbitMQ).
+   * **3. Simular Reintento Duplicado (`Idempotencia`):** Envía 2 veces seguidas el mismo `idEvento` y demuestra cómo los consumidores bloquean el cobro o descuento duplicado.
+   * **4. Enviar Pedido Inválido (`Fallo → DLQ`):** Envía un pedido con monto negativo (`-$50`), los consumidores responden `NACK` y RabbitMQ lo aísla en `cola_mensajes_muertos`.
+2. **Colas y Tópicos en RabbitMQ:** Tabla en tiempo real que consulta al broker y muestra las 5 colas, sus tópicos suscritos (*bindings*), consumidores activos, mensajes en espera y mensajes confirmados (`ACK`).
+3. **Sobres de Eventos (JSON):** Inspector para ver el JSON completo (`EventEnvelope`) de cada evento publicado en la cadena coreografiada.
+4. **Pedidos y Consistencia Eventual:** Tabla que muestra la proyección local del productor (`CREADO`, `EN_PROCESO`, `COMPLETADO`, `CANCELADO`) reconstruida a partir de los eventos de dominio, con los eventos recibidos y los que aún faltan para completar el pedido.
 
-#### En Windows (PowerShell):
+---
+
+## 🎯 5. Alternativa por Consola (`demo.ps1` / `demo.bat`)
+
+Si además deseas ejecutar las pruebas desde la terminal (incluyendo la detención y arranque automático del contenedor de facturación), puedes correr:
+
 ```powershell
-Invoke-RestMethod -Uri http://localhost:3000/orders -Method Post -ContentType "application/json" -Body (@{
-    orderId = "ORD-UTN-2026"
-    customer = @{
-        name = "Estudiante UTN"
-        email = "alumno@utn.edu.ar"
-        address = "French 414, Resistencia, Chaco"
-    }
-    items = @(
-        @{ sku = "NOTEBOOK-01"; name = "Laptop Dev 16GB"; quantity = 1; price = 1200.00 },
-        @{ sku = "MOUSE-02"; name = "Mouse Inalámbrico"; quantity = 1; price = 25.50 }
-    )
-    total = 1225.50
-} | ConvertTo-Json -Depth 5)
+.\demo.bat
 ```
-
-#### En Linux / macOS / Git Bash (cURL):
-```bash
-curl -X POST http://localhost:3000/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "orderId": "ORD-UTN-2026",
-    "customer": {
-      "name": "Estudiante UTN",
-      "email": "alumno@utn.edu.ar",
-      "address": "French 414, Resistencia, Chaco"
-    },
-    "items": [
-      { "sku": "NOTEBOOK-01", "name": "Laptop Dev 16GB", "quantity": 1, "price": 1200.00 },
-      { "sku": "MOUSE-02", "name": "Mouse Inalámbrico", "quantity": 1, "price": 25.50 }
-    ],
-    "total": 1225.50
-  }'
-```
-
-### Paso 3: ¿Qué debe observar la audiencia?
-
-1. **En la respuesta HTTP (Inmediata / Milisegundos):**
-   `orders-api` responde inmediatamente `HTTP 201 Created` informando que el evento `PedidoCreado` fue emitido exitosamente. El cliente no tiene que esperar a que el inventario se actualice ni a que la factura se imprima.
-
-2. **En la segunda terminal (Procesamiento Concurrente y Paralelo):**
-   En el mismo instante verás cómo los tres servicios reciben el mensaje a la vez y trabajan de forma simultánea:
-   ```text
-   inventory-service-worker  | [Inventory Service] 📦 EVENTO RECIBIDO: PedidoCreado
-   billing-service-worker    | [Billing Service] 📦 EVENTO RECIBIDO: PedidoCreado
-   shipping-service-worker   | [Shipping Service] 📦 EVENTO RECIBIDO: PedidoCreado
-   inventory-service-worker  | [Inventory Service] 🔄 Procesando reserva de inventario para Pedido ID: ORD-UTN-2026...
-   billing-service-worker    | [Billing Service] 💳 Iniciando proceso de facturación para Pedido ID: ORD-UTN-2026...
-   shipping-service-worker   | [Shipping Service] 🚚 Procesando orden de despacho para Pedido ID: ORD-UTN-2026...
-   inventory-service-worker  | [Inventory Service] ✅ Stock descontado y reservado exitosamente para el Pedido: ORD-UTN-2026
-   billing-service-worker    | [Billing Service] ✅ Cobro y Factura emitidos exitosamente para Pedido: ORD-UTN-2026
-   shipping-service-worker   | [Shipping Service] ✅ Envío programado y guía emitida para Pedido: ORD-UTN-2026
-   ```
+*(O `powershell -ExecutionPolicy Bypass -File .\demo.ps1`)*.
 
 ---
 
-## 📊 5. Herramienta Visual (RabbitMQ Management Dashboard)
-
-RabbitMQ incluye una consola gráfica web que permite ilustrar con claridad a la cátedra y compañeros cómo viajan los mensajes:
+## 📊 6. Panel de Administración de RabbitMQ
 
 * **URL:** [http://localhost:15672](http://localhost:15672)
-* **Usuario:** `guest`
-* **Contraseña:** `guest`
+* **Usuario:** `guest` | **Contraseña:** `guest`
 
-### ¿Qué mostrar durante la presentación?
-1. **Pestaña `Exchanges`:** Localiza `pedidos_exchange`. Podrás mostrar que es de tipo **fanout** y revisar la sección *Bindings*, donde figuran conectadas las tres colas.
-2. **Pestaña `Queues`:** Verás las tres colas activas (`inventario_queue`, `facturacion_queue`, `envios_queue`).
-3. **Métricas en tiempo real:** Al enviar pedidos concurrentes, se aprecian las curvas de entrada de mensajes (`Publish`) y entrega a consumidores (`Deliver/Ack`).
+En el panel web se puede inspeccionar en vivo:
+1. **Pestaña `Exchanges`:** El intercambiador `intercambiador_pedidos` (tipo `topic`) con sus reglas de enrutamiento (*Bindings*) y `intercambiador_dlq` (tipo `fanout`).
+2. **Pestaña `Queues`:** Las 4 colas operativas (`cola_inventario`, `cola_facturacion`, `cola_envios`, `cola_notificaciones`) y la cola de aislamiento de fallos `cola_mensajes_muertos` (DLQ).
 
 ---
 
-## 6. Detener el Entorno
+## 7. Detener el Entorno
 
-Para apagar los contenedores y liberar los recursos del sistema:
-
-```bash
-docker compose down
-```
-
-Si además deseas eliminar volúmenes asociados:
 ```bash
 docker compose down -v
 ```

@@ -1,0 +1,12 @@
+{
+  "name": "servicio-notificaciones",
+  "version": "1.0.0",
+  "description": "Microservicio Suscriptor Global: Notificaciones y Auditoría de Eventos (comodín #)",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.4"
+  }
+}
