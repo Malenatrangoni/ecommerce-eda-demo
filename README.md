@@ -96,7 +96,7 @@ Verás los **6 contenedores** activos:
 
 ---
 
-## 🖥️ 4. Usar la Interfaz Web Interactiva (Recomendado para la Demo)
+## 🖥️ 4. Usar la Interfaz Web Interactiva
 
 Una vez que los contenedores están corriendo (`docker compose up --build -d`), **no necesitas usar la terminal para disparar las pruebas**. Simplemente abre tu navegador web en:
 
